@@ -61,7 +61,7 @@ def backproject_disparity(calibration_left, calibration_right, disparity_image, 
     x, y = np.meshgrid(np.arange(disparity_image.shape[1]), np.arange(disparity_image.shape[0]))
 
     # Filter out the points where disparity is <= 8 or > 252
-    mask = (disparity_image > 10) & (disparity_image <= 252)
+    mask = (disparity_image > 10) & (disparity_image <= 255)
 
     # Only keep the points that pass the filter
     x, y, d = x[mask], y[mask], disparity_image[mask]
