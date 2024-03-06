@@ -3,7 +3,6 @@ import argparse
 import numpy as np
 import open3d as o3d
 import cv2
-import scipy
 import yaml
 
 
@@ -100,14 +99,14 @@ def backproject_disparity(calibration_left, calibration_right, disparity_image, 
 
 def main():
     parser = argparse.ArgumentParser(description='Load a YAML file with custom opencv-matrix tags into a Python dict.')
-    parser.add_argument('intrinsics', type=str, help='Path to the YAML file')
+    # parser.add_argument('intrinsics', type=str, help='Path to the YAML file')
     parser.add_argument('extrinsics', type=str, help='Path to the YAML file')
     parser.add_argument('disparity', type=str, help='Path to the YAML file')
     parser.add_argument('rgb', type=str, help='Path to the YAML file')
 
     args = parser.parse_args()
 
-    intrinsics = load_yaml_with_opencv_matrix(args.intrinsics)
+    # intrinsics = load_yaml_with_opencv_matrix(args.intrinsics)
     extrinsics = load_yaml_with_opencv_matrix(args.extrinsics)
     disparity = cv2.imread(args.disparity, cv2.IMREAD_UNCHANGED) / 16
     rgb = cv2.imread(args.rgb, cv2.IMREAD_UNCHANGED)
@@ -148,43 +147,27 @@ def main():
         colorCamCoords.append(colorCamCoords_row[0, :3])
     colorCamCoords = np.array(colorCamCoords)
 
-    print(colorCamCoords)
     # Project world coordinates into the color image.
     # (nx3)
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(world_coordinates_filtered[:, :3])
     arr = np.array([[0, 0, 0] for i, point in enumerate(colorCamCoords)]).reshape(-1, 3)
     pcd.colors = o3d.utility.Vector3dVector(arr)
-    k = 0
-    maxVal = 0
-    minVal = 10000
-    for i, point in enumerate(colorCamCoords):
-        if point[2] > maxVal:
-            maxVal = point[2]
-        if point[2] < minVal:
-            minVal = point[2]
-
     output_image = np.ones((600, 960, 4), dtype=np.float32)
+    k = 0
     for i, point in enumerate(colorCamCoords):
         if 0 < point[0] < 960 and 0 < point[1] < 600:
             x = int(point[0])
             y = int(point[1])
             col = rgb[y, x, :]
             pcd.colors[i] = col / 255
-            k += 1
-            depth = (point[2] - minVal) / (maxVal - minVal)
             output_image[y, x, 0:3] = col
-            output_image[y, x, 3] = depth
-            # print(f"d channel: {depth}")
-            # print(x, y)
+            output_image[y, x, 3] = point[2]
+            k += 1
+
+    output_image = (output_image).astype(np.uint8)
     cv2.imshow("output", output_image)
-    cv2.imwrite("output.png", output_image)
 
-
-    readImg = cv2.imread("output.png")
-    cv2.imshow("readImg", readImg)
-
-    cv2.waitKey(0)
     print(f"Colored {k} points")
     vis = o3d.visualization.Visualizer()
     vis.create_window()
