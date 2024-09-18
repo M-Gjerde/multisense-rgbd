@@ -1,0 +1,11 @@
+--csv_file saved_images/synced_frames.csv
+--disparity_folder saved_images/disparity
+--left_folder saved_images/left
+--aux_folder saved_images/aux_rectified
+--calibration_file saved_images/calibration_data/left.json
+--aux_calibration_file saved_images/calibration_data/aux.json
+--right_calibration_file saved_images/calibration_data/right.json
+--use_aux
+--save_rgbd
+--save_rgbd_path dataset/dogfood/multisense_disparity
+

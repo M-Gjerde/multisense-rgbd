@@ -1,10 +1,13 @@
 import argparse
+import os.path
 
 import numpy as np
 import open3d as o3d
 import cv2
 import scipy
 import yaml
+
+import glob
 
 
 def opencv_matrix_constructor(loader, node):
@@ -34,17 +37,32 @@ def load_yaml_with_opencv_matrix(filepath):
     yaml_content = preprocess_yaml_file(filepath)
     return yaml.safe_load(yaml_content)
 
+def load_yaml_file(filename):
+    """
+    Load a YAML file and return its content as a dictionary.
+
+    Parameters:
+    - filename: str, the path to the YAML file.
+
+    Returns:
+    - dict: The content of the YAML file as a dictionary.
+    """
+    with open(filename, 'r') as file:
+        data = yaml.safe_load(file)
+    return data
+
+
 
 def backproject_disparity(calibration_left, calibration_right, disparity_image, skip_nth_points=1):
     if disparity_image is None:
         print("No disparity image is loaded")
         return
     points = [()]
-    scale = 2
+    scale = 1
     fx = calibration_left[0] / scale
-    fy = calibration_left[5] / scale
+    fy = calibration_left[4] / scale
     cx = calibration_left[2] / scale
-    cy = calibration_left[6] / scale
+    cy = calibration_left[5] / scale
 
     tx = calibration_right[3] / calibration_right[0]
     # Construct the 4x4 projection matrix K_proj
@@ -78,8 +96,7 @@ def backproject_disparity(calibration_left, calibration_right, disparity_image, 
     sensor_coord = np.dot(K_proj, uv.T) / beta
 
     # Normalize by the last element
-    sensor_coord_scaled = sensor_coord / sensor_coord[-1, :] * scale
-
+    sensor_coord_scaled = sensor_coord / sensor_coord[-1, :]
     world_coordinates[y, x, :] = sensor_coord_scaled[:3, :].T
 
     # Store in the world_coordinates array
@@ -105,96 +122,168 @@ def main():
     parser.add_argument('disparity', type=str, help='Path to the YAML file')
     parser.add_argument('rgb', type=str, help='Path to the YAML file')
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
+    record_folder = "/home/magnus/PycharmProjects/logqs/data"
+    disparity_path = os.path.join(record_folder, "images/disparity/front/")
+    rgb_path = os.path.join(record_folder, "images/aux/front/")
 
-    intrinsics = load_yaml_with_opencv_matrix(args.intrinsics)
-    extrinsics = load_yaml_with_opencv_matrix(args.extrinsics)
-    disparity = cv2.imread(args.disparity, cv2.IMREAD_UNCHANGED) / 16
-    rgb = cv2.imread(args.rgb, cv2.IMREAD_UNCHANGED)
-    world_coordinates_filtered = backproject_disparity(extrinsics["P1"]["data"], extrinsics["P2"]["data"], disparity)
+    disparity_path_names = sorted(glob.glob(os.path.join(disparity_path, '*.png')))
+    rgb_path_names = sorted(glob.glob(os.path.join(rgb_path, '*.png')))
 
-    color_intrinsic = np.array(extrinsics["P3"]["data"]).reshape(3, 4) / 2
+    #intrinsics = load_yaml_with_opencv_matrix(os.path.join(record_folder, "830-01107-0012269_intrinsics.yml"))
+    #extrinsics = load_yaml_with_opencv_matrix(os.path.join(record_folder, "830-01107-0012269_extrinsics.yml"))
+
+    aux_calibration = load_yaml_with_opencv_matrix(os.path.join(record_folder, "calibration/front/aux_calibration.yaml"))
+    left_calibration = load_yaml_with_opencv_matrix(os.path.join(record_folder, "calibration/front/left_calibration.yaml"))
+    right_calibration = load_yaml_with_opencv_matrix(os.path.join(record_folder, "calibration/front/right_calibration.yaml"))
+
+    save_location = "/home/magnus/phd/SplaTAM/data/custom_rgbd/work_desk1"
+    save_location_disparity = os.path.join(save_location, "depth")
+    save_location_rgb = os.path.join(save_location, "rgb")
+    # Create the new directory if it does not exist
+    if not os.path.exists(save_location_disparity):
+        os.makedirs(save_location_disparity)
+    if not os.path.exists(save_location_rgb):
+        os.makedirs(save_location_rgb)
+
+    # List for storing new file paths
+    new_disparity_path_names = []
+    new_rgb_path_names = []
+
+    # Loop over each file path and create a new path
+    for file_path in disparity_path_names:
+        # Extract the base name of the file
+        file_name = os.path.basename(file_path).replace(".tiff", ".png")
+        # Create a new path with the same file name in the new directory
+        new_file_path = os.path.join(save_location_disparity, file_name)
+        new_disparity_path_names.append(new_file_path)
+    # Loop over each file path and create a new path
+    for file_path in rgb_path_names:
+        # Extract the base name of the file
+        file_name = os.path.basename(file_path).replace(".ppm", ".png")
+        # Create a new path with the same file name in the new directory
+        new_file_path = os.path.join(save_location_rgb, file_name)
+        new_rgb_path_names.append(new_file_path)
+
+
+    color_intrinsic = np.array(aux_calibration["K"]).reshape(3, 3)
     color_intrinsic = color_intrinsic[0:3, 0:3]
+    color_intrinsic[2, 2] = 1
     color_intrinsic = np.hstack([color_intrinsic, np.array([0, 0, 0]).reshape(-1, 1)])
     color_intrinsic = np.vstack([color_intrinsic, np.array([0, 0, 0, 1])])
-    print(color_intrinsic)
 
-    color_extrinsic = np.array(extrinsics["R3"]["data"]).reshape(3, 3)
-    x = extrinsics["P3"]["data"][3] / extrinsics["P3"]["data"][0]
-    y = extrinsics["P3"]["data"][7] / extrinsics["P3"]["data"][0]
-    z = extrinsics["P3"]["data"][11] / extrinsics["P3"]["data"][0]
+    color_extrinsic = np.array(aux_calibration["R"]).reshape(3, 3)
+    x = aux_calibration["P"][3] / aux_calibration["P"][0]
+    y = 0
+    z =  0
     color_extrinsic = np.hstack([color_extrinsic, np.array([x, y, z]).reshape(-1, 1)])
     color_extrinsic = np.vstack([color_extrinsic, np.array([0, 0, 0, 1])])
-    print()
-    print(color_extrinsic)
 
-    # Convert inCoords to a homogeneous coordinate (4-element vector)
-    colorCamCoords = []
-    for i, row in enumerate(world_coordinates_filtered):
-        inCoords_h = np.array(
-            [world_coordinates_filtered[i, 0], world_coordinates_filtered[i, 1], world_coordinates_filtered[i, 2], 1.0])
+    csv_rgb = os.path.join(save_location, 'rgb.txt')
+    csv_disparity = os.path.join(save_location, 'depth.txt')
+    csv_ground_truth = os.path.join(save_location, 'groundtruth.txt')
+    # Open the .txt file in append mode
+    csv_rgb_file = open(csv_rgb, 'a')
+    csv_depth_file = open(csv_disparity, 'a')
+    csv_ground_truth_file = open(csv_ground_truth, 'a')
 
-        # Reshape inCoords_h to a row vector (1x4 matrix)
-        inCoords_h_row = inCoords_h.reshape(1, -1)
+    csv_rgb_file.write("# color images\n")
+    csv_rgb_file.write("# file: 'work_desk1.bag'\n")
+    csv_rgb_file.write("# filename filenamePath\n")
+    csv_ground_truth_file.write("# ground truth trajectory\n")
+    csv_ground_truth_file.write("# file: 'work_desk1.bag'\n")
+    csv_ground_truth_file.write("# filename filenamePath\n")
 
-        # Reverse the multiplication order for row-major order
-        colorCamCoords_row = inCoords_h_row @ color_extrinsic.T @ color_intrinsic.T
+    csv_depth_file.write("# depth images\n")
+    csv_depth_file.write("# file: 'work_desk1.bag'\n")
+    csv_depth_file.write("# filename filenamePath\n")
 
-        # Divide by the z-coordinate (the third element)
-        colorCamCoords_row /= world_coordinates_filtered[i, 2]
+    for fileIdx in range(0, len(new_rgb_path_names)):
+        print(f"Loading disparity: {disparity_path_names[fileIdx]} and color image: {rgb_path_names[fileIdx]}")
+        disparity = cv2.imread(disparity_path_names[fileIdx], cv2.IMREAD_UNCHANGED)
+        rgb = cv2.imread(rgb_path_names[fileIdx], cv2.IMREAD_UNCHANGED)
+        world_coordinates_filtered = backproject_disparity(left_calibration["K"], right_calibration["P"],
+                                                           disparity)
+        P = color_intrinsic @ color_extrinsic
+        # P = 1 / world_coordinates_filtered[:, 2] * P
+        # Perform the matrix multiplication in one step for all coordinates
+        colorCamCoords_matrix = world_coordinates_filtered @ P.T
 
-        # Now colorCamCoords_row is a 1x4 matrix where the first three elements are x, y, z in color camera space
-        # You may take just the first three elements to get the 3D coordinates
-        colorCamCoords.append(colorCamCoords_row[0, :3])
-    colorCamCoords = np.array(colorCamCoords)
+        # Divide by the z-coordinate (the third column of world_coordinates_filtered)
+        colorCamCoords_matrix /= colorCamCoords_matrix[:, 2].reshape(-1, 1)
 
-    print(colorCamCoords)
-    # Project world coordinates into the color image.
-    # (nx3)
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(world_coordinates_filtered[:, :3])
-    arr = np.array([[0, 0, 0] for i, point in enumerate(colorCamCoords)]).reshape(-1, 3)
-    pcd.colors = o3d.utility.Vector3dVector(arr)
-    k = 0
-    maxVal = 0
-    minVal = 10000
-    for i, point in enumerate(colorCamCoords):
-        if point[2] > maxVal:
-            maxVal = point[2]
-        if point[2] < minVal:
-            minVal = point[2]
+        # u = colorCamCoords_matrix[:, 0] / colorCamCoords_matrix[:, 2]
+        # v = colorCamCoords_matrix[:, 1] / colorCamCoords_matrix[:, 2]
+        # z
+        # uv = np.vstack([u, v]).T
+        # Extract the first three columns to get the 3D coordinates in color camera space
+        colorCamCoords = colorCamCoords_matrix[:, :3]
 
-    output_image = np.ones((600, 960, 4), dtype=np.float32)
-    for i, point in enumerate(colorCamCoords):
-        if 0 < point[0] < 960 and 0 < point[1] < 600:
-            x = int(point[0])
-            y = int(point[1])
-            col = rgb[y, x, :]
-            pcd.colors[i] = col / 255
-            k += 1
-            depth = (point[2] - minVal) / (maxVal - minVal)
-            output_image[y, x, 0:3] = col
-            output_image[y, x, 3] = depth
-            # print(f"d channel: {depth}")
-            # print(x, y)
-    cv2.imshow("output", output_image)
-    cv2.imwrite("output.png", output_image)
+        output_rgb = np.ones((600, 960, 3), dtype=np.uint8)
+        output_depth = np.zeros((600, 960, 1), dtype=np.uint16)
+        for i, point in enumerate(colorCamCoords_matrix):
+            if 0 < point[0] < 959 and 0 < point[1] < 594:
+                distance = 1 / point[3]
+                if 1.5 < distance < 30:
+                    x = round(point[0])
+                    y = round(point[1])
+                    col = rgb[y, x, :]
+                    output_rgb[y, x, 0:3] = col
+                    output_depth[y, x, 0] = distance * 5000
+
+        view_rgb = output_rgb.copy()
+        view_rgb = cv2.circle(view_rgb, (480, 500), 10, (255, 0, 0), 5)
+        view_rgb = cv2.circle(view_rgb, (480, 250), 10, (0, 255, 0), 5)
+        view_rgb = cv2.circle(view_rgb, (430, 300), 10, (0, 0, 255), 5)
+        print(
+            f"Blue depth :{output_depth[500, 480]}, Green depth :{output_depth[250, 480]}, Red depth :{output_depth[430, 300]}")
+
+        cv2.imwrite(new_rgb_path_names[fileIdx], output_rgb)
+        cv2.imwrite(new_disparity_path_names[fileIdx], output_depth)
+        cv2.imshow("output_rgb", view_rgb)
+        cv2.imshow("output_depth", output_depth)
+
+        # Extract the file name
+        file_name = os.path.basename(new_rgb_path_names[fileIdx].replace(".png", ""))
+        # Construct the relative path
+        relative_path = os.path.join("rgb", file_name + ".png")
+        # Construct the timestamp from the filename (assuming the filename is the timestamp)
+        timestamp = os.path.splitext(file_name)[0]
+
+        # Write the line to the csv file
+        csv_rgb_file.write(f"{timestamp} {relative_path}\n")
+        # Extract the file name
+        file_name = os.path.basename(new_disparity_path_names[fileIdx].replace(".png", ""))
+        # Construct the relative path
+        relative_path = os.path.join("depth", file_name + ".png")
+        # Construct the timestamp from the filename (assuming the filename is the timestamp)
+        timestamp = os.path.splitext(file_name)[0]
+        csv_depth_file.write(f"{timestamp} {relative_path}\n")
 
 
-    readImg = cv2.imread("output.png")
-    cv2.imshow("readImg", readImg)
+        # Extract the file name
+        file_name = os.path.basename(new_disparity_path_names[fileIdx].replace(".png", ""))
+        timestamp = os.path.splitext(file_name)[0]
+        # Write the line to the csv file
+        csv_ground_truth_file.write(f"{timestamp} {'1.2334 -0.0113 1.6941 0.7907 0.4393 -0.1770 -0.3879'}\n")
 
-    cv2.waitKey(0)
-    print(f"Colored {k} points")
-    vis = o3d.visualization.Visualizer()
-    vis.create_window()
-    # Create a coordinate frame
-    frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0, origin=[0, 0, 0])
-    # Visualize
-    vis.add_geometry(frame)
-    vis.add_geometry(pcd)
-    vis.run()
-    vis.destroy_window()
+
+        key = cv2.waitKey(1)
+        if key == ord("q"):
+            break
+        plot = False
+        if plot == True:
+            # print(f"Colored {k} points")
+            vis = o3d.visualization.Visualizer()
+            vis.create_window()
+            # Create a coordinate frame
+            frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0, origin=[0, 0, 0])
+            # Visualize
+            vis.add_geometry(frame)
+            vis.add_geometry(pcd)
+            vis.run()
+            vis.destroy_window()
+    cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

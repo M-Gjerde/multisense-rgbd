@@ -1,0 +1,11 @@
+--csv_file multisense/somerset/synced_frames.csv
+--disparity_folder multisense/somerset/disparity
+--left_folder multisense/somerset/left
+--aux_folder multisense/somerset/aux_rectified
+--calibration_file multisense/somerset/calibration_data/left.json
+--aux_calibration_file multisense/somerset/calibration_data/aux.json
+--right_calibration_file multisense/somerset/calibration_data/right.json
+--use_aux
+--save_rgbd
+--save_rgbd_path dataset/somerset/multisense_disparity
+
