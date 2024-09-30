@@ -282,8 +282,7 @@ def load_and_update_point_cloud(vis, point_cloud, csv_rows, index, use_aux, K_le
     print(f"Frame: {index}, File: {os.path.basename(row[0])} ")
     first_frame = False
 
-def read_args_from_file(file_path):
-    # Read arguments from the text file and return them as a list
+def read_args_from_file(file_path):  # Read arguments from the text file and return them as a list
     with open(file_path, 'r') as f:
         args = f.read().split()
     return args
