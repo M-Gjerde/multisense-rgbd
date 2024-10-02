@@ -5,8 +5,10 @@ import numpy as np
 from pathlib import Path
 import csv
 
+from tqdm import tqdm
+
 # Paths
-image_save_folder = Path('multisense/somerset/')
+image_save_folder = Path('logqs_dataset/jeep_gravel/')
 aux_folder = image_save_folder / 'aux'
 calibration_file = image_save_folder / 'calibration_data/aux.json'
 aux_rectified_folder = image_save_folder / 'aux_rectified'
@@ -33,12 +35,17 @@ print("P (Projection Matrix):", P)
 print("Image Size:", image_size)
 
 # Iterate over each image in the aux folder
-for img_filename in os.listdir(aux_folder):
+for img_filename in tqdm(sorted(os.listdir(aux_folder))):
     if img_filename.endswith('.png'):
         img_path = aux_folder / img_filename
 
         # Load the image
         img = cv2.imread(str(img_path))
+        if img is None: # Mostly likely corrupted.
+            # If image is corrupted, create a blank image
+            print(f"Image {img_filename} could not be loaded. Creating a blank image.")
+            # Create a blank image filled with zeros (black)
+            img = np.zeros((600 - 6, 960, 3), dtype=np.uint8)
 
         # Ensure the image size matches the expected size from calibration
         if img.shape[1] != image_size[0] or img.shape[0] != image_size[1]:
@@ -55,6 +62,6 @@ for img_filename in os.listdir(aux_folder):
         rectified_img_path = aux_rectified_folder / img_filename
         cv2.imwrite(str(rectified_img_path), rectified_img)
 
-        print(f"Rectified and saved: {rectified_img_path}")
+        #print(f"Rectified and saved: {rectified_img_path}")
 
 print(f"Stereo rectification completed. Rectified images saved in: {aux_rectified_folder}")

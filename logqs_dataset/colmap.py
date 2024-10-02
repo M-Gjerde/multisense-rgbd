@@ -59,7 +59,9 @@ class ConvertColmap:
                 f"--database_path {base_dir}/database.db "
                 f"--image_path {image_path} "
                 f"--output_path {base_dir}/sparse "
-                f"--Mapper.ba_global_function_tolerance=0.000001"
+                f"--Mapper.ba_global_function_tolerance=0.000001 "
+                f"--Mapper.min_num_matches 15 "
+                f"--Mapper.multiple_models 0"
             )
             exit_code = os.system(mapper_cmd)
             if exit_code != 0:

@@ -3,7 +3,7 @@ import csv
 from pathlib import Path
 
 # Define the image folders
-image_save_folder = Path('multisense/somerset/')
+image_save_folder = Path('logqs_dataset/jeep_gravel/')
 folders = {
     'right': image_save_folder / 'right',
     'left': image_save_folder / 'left',  # Use left as the reference
@@ -36,7 +36,8 @@ def find_closest_match(target_timestamp, timestamps, key):
 
     # Debug: Print the timestamp matching process
     if closest_timestamp:
-        print(f"Match found for {key}: Target: {target_timestamp}, Closest: {closest_timestamp}, Diff: {min_diff}")
+        pass
+        #print(f"Match found for {key}: Target: {target_timestamp}, Closest: {closest_timestamp}, Diff: {min_diff}")
     else:
         print(f"No match found for {key}: Target: {target_timestamp}")
 

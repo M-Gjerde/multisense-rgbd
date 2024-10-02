@@ -15,7 +15,7 @@ first_frame = True
 
 def disparity_to_depth(disparity_image, focal_length, baseline):
     """Convert disparity image to depth map."""
-    mask = disparity_image == 0  # Mask where disparity is 0 (invalid disparity)
+    mask = disparity_image < 5  # Mask where disparity is 0 (invalid disparity)
     disparity_image[mask] = 0.1  # Avoid division by zero by setting small value
     depth_map = (focal_length * baseline) / disparity_image
     depth_map[mask] = 0  # Reset masked depth values to 0
@@ -290,20 +290,20 @@ def read_args_from_file(file_path):  # Read arguments from the text file and ret
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Reproject disparity files into 3D point clouds')
     parser.add_argument('--csv_file', type=str, required=False, help="Path to synced_frames.csv",
-                        default="saved_images/synced_frames.csv")
+                        default="logqs_dataset/stallion/synced_frames.csv")
     parser.add_argument('--disparity_folder', type=str, required=False, help="Folder containing disparity .npy files",
-                        default="saved_images/disparity")
+                        default="logqs_dataset/stallion/disparity")
     parser.add_argument('--left_folder', type=str, required=False, help="Folder containing left images",
-                        default="saved_images/left")
+                        default="logqs_dataset/stallion/left")
     parser.add_argument('--aux_folder', type=str, required=False, help="Folder containing aux images",
-                        default="saved_images/aux_rectified")
+                        default="logqs_dataset/stallion/aux_rectified")
     parser.add_argument('--calibration_file', type=str, required=False, help="Path to left camera calibration file",
-                        default="saved_images/calibration_data/left.json")
+                        default="logqs_dataset/stallion/calibration_data/left.json")
     parser.add_argument('--aux_calibration_file', type=str, required=False, help="Path to aux camera calibration file",
-                        default="saved_images/calibration_data/aux.json")
+                        default="logqs_dataset/stallion/calibration_data/aux.json")
     parser.add_argument('--right_calibration_file', type=str, required=False,
                         help="Path to aux camera calibration file",
-                        default="saved_images/calibration_data/right.json")
+                        default="logqs_dataset/stallion/calibration_data/right.json")
     parser.add_argument('--use_aux', action='store_true', help="Flag to use aux rectified images for coloring")
     parser.add_argument('--save_rgbd', action='store_true',
                         help="Flag to save rgbd_images, Make sure to update output folder")
@@ -327,7 +327,7 @@ if __name__ == "__main__":
     with open(args.right_calibration_file, 'r') as f:
         calibration_data_right = json.load(f)
 
-    baseline = float(calibration_data_right['P'][3]) / float(calibration_data_right['P'][0])
+    baseline = abs(float(calibration_data_right['P'][3]) / float(calibration_data_right['P'][0]))
 
     # Extract intrinsic matrix and baseline from the calibration file (left camera)
     K_left = np.array(calibration_data_left['K']).reshape(3, 3)
@@ -357,7 +357,7 @@ if __name__ == "__main__":
         if state["current_index"] < len(csv_rows) - 1:
             state["current_index"] += 1
         load_and_update_point_cloud(vis, point_cloud, csv_rows, state["current_index"], args.use_aux, K_left, K_aux,
-                                    args)
+                                    args, baseline)
 
 
     # Function to go to the previous frame
@@ -365,7 +365,7 @@ if __name__ == "__main__":
         if state["current_index"] > 0:
             state["current_index"] -= 1
         load_and_update_point_cloud(vis, point_cloud, csv_rows, state["current_index"], args.use_aux, K_left, K_aux,
-                                    args)
+                                    args, baseline)
 
 
     def toggle(vis):
@@ -375,7 +375,7 @@ if __name__ == "__main__":
                 state["current_index"] += 1
                 load_and_update_point_cloud(vis, point_cloud, csv_rows, state["current_index"], args.use_aux, K_left,
                                             K_aux,
-                                            args)
+                                            args, baseline)
 
 
     # Register key callbacks for left and right arrow keys
@@ -387,7 +387,7 @@ if __name__ == "__main__":
     vis.add_geometry(point_cloud, reset_bounding_box=True)
 
     # Load the first frame initially
-    load_and_update_point_cloud(vis, point_cloud, csv_rows, state["current_index"], args.use_aux, K_left, K_aux, args)
+    load_and_update_point_cloud(vis, point_cloud, csv_rows, state["current_index"], args.use_aux, K_left, K_aux, args, baseline)
 
     # if args.save_rgbd:
     # toggle(vis)
