@@ -166,20 +166,20 @@ def point_cloud_to_rgbd(point_cloud, width, height, intrinsic_matrix):
     return color_image, depth_image
 
 
-def save_rgbd_tum_format(color_image, depth_image, output_dir, frame_id):
+def save_rgbd_tum_format(color_image, depth_image, output_dir, disparity_filename, color_filename, frame_id):
     """Save color and depth images in TUM RGB-D format."""
     # Save RGB image
-    rgb_file = os.path.join(output_dir, f"rgb/{frame_id}.png")
+    rgb_file = os.path.join(output_dir, f"rgb/{disparity_filename}")
     os.makedirs(os.path.dirname(rgb_file), exist_ok=True)
     cv2.imwrite(rgb_file, color_image)
 
     # Save Depth image (in millimeters, 16-bit PNG)
-    depth_file = os.path.join(output_dir, f"depth/{frame_id}.png")
+    depth_file = os.path.join(output_dir, f"depth/{color_filename}")
     os.makedirs(os.path.dirname(depth_file), exist_ok=True)
     depth_image_mm = depth_image.astype(np.uint16)  # Convert depth to 16-bit
     cv2.imwrite(depth_file, depth_image_mm)
 
-    print(f"Saved frame {frame_id} as RGB-D (TUM format) to: {os.path.join(output_dir, f'rgb/{frame_id}.png')}")
+    print(f"Saved frame {frame_id} as RGB-D (TUM format) to: {os.path.join(output_dir, f'rgb/{color_filename}')}")
 
 
 # Apply mask to depth and color images
@@ -237,7 +237,7 @@ def load_and_update_point_cloud(vis, point_cloud, csv_rows, index, use_aux, K_le
     # Create point cloud and update geometry
     updated_point_cloud = create_colored_point_cloud(depth_image, color_image, intrinsic_matrix,)
 
-    updated_point_cloud = remove_noise_from_point_cloud_simple(updated_point_cloud)
+    #updated_point_cloud = remove_noise_from_point_cloud_simple(updated_point_cloud)
 
     point_cloud.points = updated_point_cloud.points
     point_cloud.colors = updated_point_cloud.colors
@@ -260,21 +260,19 @@ def load_and_update_point_cloud(vis, point_cloud, csv_rows, index, use_aux, K_le
         max_depth = 10000  # Maximum depth value in mm
 
         # Clip the depth values to the 0-20 range
-        depth_clipped = np.clip(depth_image_rgbd, min_depth, max_depth)
-
-        # Scale the depth image to 8-bit (0-255) for the colormap application
-        depth_scaled = ((depth_clipped - min_depth) / (max_depth - min_depth)) * 255
-        depth_scaled = depth_scaled.astype(np.uint8)
+        #depth_clipped = np.clip(depth_image_rgbd, min_depth, max_depth)
+        #depth_scaled = ((depth_clipped - min_depth) / (max_depth - min_depth)) * 255
+        #depth_scaled = depth_scaled.astype(np.uint8)
 
         # Apply the Jet colormap
-        depth_colored = cv2.applyColorMap(depth_scaled, cv2.COLORMAP_JET)
-        color_image_rgbd = color_image_rgbd[:, :, ::-1]  # Convert BGR to RGB by reversing the color channels
+        #depth_colored = cv2.applyColorMap(depth_scaled, cv2.COLORMAP_JET)
+        #color_image_rgbd = color_image_rgbd[:, :, ::-1]  # Convert BGR to RGB by reversing the color channels
 
-        cv2.imshow("Color", color_image_rgbd)
-        cv2.imshow("filtered_depth_image", depth_colored)
-        cv2.waitKey(1)
+        #cv2.imshow("Color", color_image_rgbd)
+        #cv2.imshow("filtered_depth_image", depth_colored)
+        #cv2.waitKey(1)
         # Save the RGB and depth images in TUM RGB-D format
-        save_rgbd_tum_format(color_image_rgbd, depth_image_rgbd, args.save_rgbd_path, index)
+        save_rgbd_tum_format(color_image_rgbd, depth_image_rgbd, args.save_rgbd_path, os.path.basename(row[3]), os.path.basename(row[2]), index)
 
     vis.add_geometry(point_cloud, reset_bounding_box=first_frame)
     vis.poll_events()
@@ -288,22 +286,23 @@ def read_args_from_file(file_path):  # Read arguments from the text file and ret
     return args
 
 if __name__ == "__main__":
+    dataset_folder = "indoor_store"
     parser = argparse.ArgumentParser(description='Reproject disparity files into 3D point clouds')
     parser.add_argument('--csv_file', type=str, required=False, help="Path to synced_frames.csv",
-                        default="logqs_dataset/stallion/synced_frames.csv")
+                        default=f"logqs_dataset/{dataset_folder}/synced_frames.csv")
     parser.add_argument('--disparity_folder', type=str, required=False, help="Folder containing disparity .npy files",
-                        default="logqs_dataset/stallion/disparity")
+                        default=f"logqs_dataset/{dataset_folder}/disparity")
     parser.add_argument('--left_folder', type=str, required=False, help="Folder containing left images",
-                        default="logqs_dataset/stallion/left")
+                        default=f"logqs_dataset/{dataset_folder}/left")
     parser.add_argument('--aux_folder', type=str, required=False, help="Folder containing aux images",
-                        default="logqs_dataset/stallion/aux_rectified")
+                        default=f"logqs_dataset/{dataset_folder}/aux_rectified")
     parser.add_argument('--calibration_file', type=str, required=False, help="Path to left camera calibration file",
-                        default="logqs_dataset/stallion/calibration_data/left.json")
+                        default=f"logqs_dataset/{dataset_folder}/calibration_data/left.json")
     parser.add_argument('--aux_calibration_file', type=str, required=False, help="Path to aux camera calibration file",
-                        default="logqs_dataset/stallion/calibration_data/aux.json")
+                        default=f"logqs_dataset/{dataset_folder}/calibration_data/aux.json")
     parser.add_argument('--right_calibration_file', type=str, required=False,
                         help="Path to aux camera calibration file",
-                        default="logqs_dataset/stallion/calibration_data/right.json")
+                        default=f"logqs_dataset/{dataset_folder}/calibration_data/right.json")
     parser.add_argument('--use_aux', action='store_true', help="Flag to use aux rectified images for coloring")
     parser.add_argument('--save_rgbd', action='store_true',
                         help="Flag to save rgbd_images, Make sure to update output folder")

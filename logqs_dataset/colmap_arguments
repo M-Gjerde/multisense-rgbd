@@ -1,1 +1,7 @@
 python colmap.py gsplat_data/stallion
+
+
+colmap model_converter \
+    --input_path gsplat_data/stallion/sparse/0 \
+    --output_path gsplat_data/stallion/sparse/0  \
+    --output_type TXT

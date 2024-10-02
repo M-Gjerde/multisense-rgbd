@@ -90,7 +90,7 @@ def parse_args():
     parser.add_argument("image_path", type=Path, help="Input to images folder")
     parser.add_argument("--use_gpu", action="store_true", help="Whether to use GPU with COLMAP", default=True)
     parser.add_argument("--skip_matching", action="store_true", help="Skip matching")
-    parser.add_argument("--skip_undistortion", action="store_true", help="Skip undistorting images")
+    parser.add_argument("--skip_undistortion", default=True, action="store_true", help="Skip undistorting images")
     parser.add_argument("--camera", type=str, default="PINHOLE", help="Camera type")
     parser.add_argument("--resize", action="store_true", help="Resize images")
 

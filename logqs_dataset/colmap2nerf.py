@@ -1,22 +1,17 @@
-#!/usr/bin/env python3
-
 import argparse
 import os
-import sys
-import math
-import cv2
-import shutil
-import numpy as np
 import json
-from glob import glob
-from pathlib import Path, PurePosixPath
+import numpy as np
+import subprocess
+import pandas as pd
+from pathlib import Path
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Convert a text colmap export to NeRF format transforms.json")
-    parser.add_argument("--colmap_text", required=True, help="Path to the COLMAP text files (cameras, images, points3D)")
-    parser.add_argument("--images", required=True, help="Path to the images used in COLMAP")
+    parser.add_argument("--input_folder", required=True, help="Path to the COLMAP text files (cameras, images, points3D)")
+    parser.add_argument("--csv_file", required=True, help="Path to the downsampled synced_frames.csv file")
     parser.add_argument("--out", default="transforms.json", help="Output JSON file path")
-    parser.add_argument("--aabb_scale", default=32, choices=["1", "2", "4", "8", "16", "32", "64", "128"],
+    parser.add_argument("--aabb_scale", default=1, choices=["1", "2", "4", "8", "16", "32", "64", "128"],
                         help="Scale factor for the bounding box")
     parser.add_argument("--skip_early", default=0, type=int, help="Skip this many images from the start")
     parser.add_argument("--keep_colmap_coords", action="store_true", help="Keep original COLMAP coordinate system")
@@ -28,12 +23,6 @@ def qvec2rotmat(qvec):
         [2 * qvec[1] * qvec[2] + 2 * qvec[0] * qvec[3], 1 - 2 * qvec[1]**2 - 2 * qvec[3]**2, 2 * qvec[2] * qvec[3] - 2 * qvec[0] * qvec[1]],
         [2 * qvec[3] * qvec[1] - 2 * qvec[0] * qvec[2], 2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1], 1 - 2 * qvec[1]**2 - 2 * qvec[2]**2]
     ])
-
-def sharpness(imagePath):
-    image = cv2.imread(imagePath)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    fm = cv2.Laplacian(gray, cv2.CV_64F).var()
-    return fm
 
 def load_camera_params(colmap_text_path):
     cameras = {}
@@ -55,16 +44,44 @@ def load_camera_params(colmap_text_path):
                 camera["fl_y"] = float(els[5])
                 camera["cx"] = float(els[6])
                 camera["cy"] = float(els[7])
-            # Add handling for more camera models here if necessary
             cameras[camera_id] = camera
     return cameras
 
 def main():
     args = parse_args()
-    cameras = load_camera_params(args.colmap_text)
+
+    # Read the downsampled CSV file
+    csv_path = Path(args.csv_file)
+    df = pd.read_csv(csv_path)
+
+    # Run the COLMAP model converter
+    command = [
+        "colmap",
+        "model_converter",
+        "--input_path", f'{os.path.join(args.input_folder, "sparse" , "0")}',
+        "--output_path", f'{os.path.join(args.input_folder, "sparse" , "0")}',
+        "--output_type", "TXT"
+    ]
+    # Run the COLMAP model converter
+    command = [
+        "colmap",
+        "model_converter",
+        "--input_path", f'{os.path.join(args.input_folder, "sparse" , "0")}',
+        "--output_path", f'{os.path.join(args.input_folder, "sparse_pc.ply")}',
+        "--output_type", "PLY"
+    ]
+
+    try:
+        subprocess.run(command, check=True)
+        print("COLMAP model conversion completed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+
+    cameras = load_camera_params(args.input_folder)
     out = {"frames": [], "aabb_scale": int(args.aabb_scale)}
 
-    with open(os.path.join(args.colmap_text, "sparse/0/images.txt"), "r") as f:
+    # Open COLMAP images file to extract poses
+    with open(os.path.join(args.input_folder, "sparse/0/images.txt"), "r") as f:
         line_num = 0  # Counter to track lines
 
         for line in f:
@@ -75,13 +92,14 @@ def main():
             if line_num % 2 == 1:
                 line_num += 1
                 continue
+            line_num += 1
+
             elems = line.split(" ")
-            print(elems)
             image_id = int(elems[0])
             qvec = np.array([float(v) for v in elems[1:5]])
             tvec = np.array([float(v) for v in elems[5:8]])
-            camera_id = int(elems[8])  # Get camera_id from the correct column
-            image_path = os.path.join(args.images, "_".join(elems[9:]).strip())
+            camera_id = int(elems[8])
+            image_path = "_".join(elems[9:]).strip()
 
             # Get the correct camera parameters for this image using camera_id
             camera = cameras.get(camera_id)
@@ -89,19 +107,40 @@ def main():
                 print(f"Warning: No camera found for camera_id {camera_id}")
                 continue
 
+            # Extract the image filename (without the path) from the image_path
+            image_filename = os.path.basename(image_path)
+
+            # Match the extracted image filename to the 'left' column in the CSV
+            matched_row = df[df['aux'].str.contains(image_filename, regex=False)]
+
+            if matched_row.empty:
+                print(f"Warning: No CSV entry found for image {image_filename}")
+                continue
+
+            # Use aux_rectified for color and disparity for depth
+            color_path = f"images/{matched_row['aux_rectified'].values[0].split('/')[-1]}"
+            depth_path = f"depth/{matched_row['disparity'].values[0].split('/')[-1]}"
+
+            # Convert quaternion to rotation matrix
             R = qvec2rotmat(qvec)
             t = tvec.reshape([3, 1])
             bottom = np.array([0.0, 0.0, 0.0, 1.0]).reshape([1, 4])
             m = np.concatenate([np.concatenate([R, t], 1), bottom], 0)
             c2w = np.linalg.inv(m)
-            frame = {"file_path": image_path, "transform_matrix": c2w.tolist()}
-            frame.update(camera)  # Use camera parameters based on camera_id
-            out["frames"].append(frame)
-            line_num += 1
 
-    with open(args.out, "w") as outfile:
+            frame = {
+                "file_path": color_path,
+                "depth_file_path": depth_path,
+                "transform_matrix": c2w.tolist()
+            }
+            frame.update(camera)
+
+            out["frames"].append(frame)
+
+    # Save the transforms.json
+    with open(os.path.join(args.input_folder, args.out), "w") as outfile:
         json.dump(out, outfile, indent=2)
-    print(f"Saved to {args.out}")
+    print(f"Saved transforms to {args.out}")
 
 if __name__ == "__main__":
     main()
