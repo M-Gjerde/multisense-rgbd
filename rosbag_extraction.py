@@ -6,8 +6,8 @@ import json
 from tqdm import tqdm
 
 # Define the bag file path and the root folder to save images and calibration data
-bagpath = Path('rosbags/jeep_gravel.bag')
-image_save_folder = Path('logqs_dataset/jeep_gravel/')
+bagpath = Path('rosbags/MultiSense.bag')
+image_save_folder = Path('logqs_dataset/MultiSense/')
 image_save_folder.mkdir(exist_ok=True, parents=True)
 
 # Create subfolders for the different image types

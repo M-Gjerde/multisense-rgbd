@@ -35,7 +35,8 @@ class ConvertColmap:
                 f"--image_path {image_path} "
                 f"--ImageReader.single_camera 1 "
                 f"--ImageReader.camera_model {self.camera} "
-                f"--SiftExtraction.use_gpu {use_gpu}"
+                f"--SiftExtraction.use_gpu {use_gpu} "
+                #f"--SiftExtraction.max_num_features=10000"
             )
             exit_code = os.system(feat_extracton_cmd)
             if exit_code != 0:
@@ -59,9 +60,7 @@ class ConvertColmap:
                 f"--database_path {base_dir}/database.db "
                 f"--image_path {image_path} "
                 f"--output_path {base_dir}/sparse "
-                f"--Mapper.ba_global_function_tolerance=0.000001 "
-                f"--Mapper.min_num_matches 15 "
-                f"--Mapper.multiple_models 0"
+                f"--Mapper.ba_global_function_tolerance=0.000001"
             )
             exit_code = os.system(mapper_cmd)
             if exit_code != 0:
@@ -90,7 +89,7 @@ def parse_args():
     parser.add_argument("image_path", type=Path, help="Input to images folder")
     parser.add_argument("--use_gpu", action="store_true", help="Whether to use GPU with COLMAP", default=True)
     parser.add_argument("--skip_matching", action="store_true", help="Skip matching")
-    parser.add_argument("--skip_undistortion", default=True, action="store_true", help="Skip undistorting images")
+    parser.add_argument("--skip_undistortion", action="store_true", help="Skip undistorting images")
     parser.add_argument("--camera", type=str, default="PINHOLE", help="Camera type")
     parser.add_argument("--resize", action="store_true", help="Resize images")
 
