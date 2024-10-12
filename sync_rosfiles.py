@@ -3,7 +3,7 @@ import csv
 from pathlib import Path
 
 # Define the image folders
-image_save_folder = Path('logqs_dataset/jeep_gravel/')
+image_save_folder = Path('logqs_dataset/test/')
 folders = {
     'right': image_save_folder / 'right',
     'left': image_save_folder / 'left',  # Use left as the reference

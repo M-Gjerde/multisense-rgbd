@@ -8,7 +8,7 @@ import csv
 from tqdm import tqdm
 
 # Paths
-image_save_folder = Path('logqs_dataset/jeep_gravel/')
+image_save_folder = Path('logqs_dataset/test/')
 aux_folder = image_save_folder / 'aux'
 calibration_file = image_save_folder / 'calibration_data/aux.json'
 aux_rectified_folder = image_save_folder / 'aux_rectified'
