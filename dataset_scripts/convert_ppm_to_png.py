@@ -3,8 +3,8 @@ from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 
 # Directory containing the .ppm images
-input_directory = 'desk_high_res'
-output_directory = 'desk_high_res_png'
+input_directory = '../datasets/viewer/desk2/multisense/Color_Rectified_Aux/ppm'
+output_directory = '../datasets/viewer/desk2/multisense/Color_Rectified_Aux/png'
 max_workers = 32# Adjust this value based on your CPU's core count
 
 # Create the output directory if it doesn't exist

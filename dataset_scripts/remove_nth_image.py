@@ -1,7 +1,7 @@
 import os
 
 # Directory containing the images
-image_directory = 'desk_high_res_png'
+image_directory = ''
 n = 2  # Delete every n-th image
 
 # Get a sorted list of all image files in the directory

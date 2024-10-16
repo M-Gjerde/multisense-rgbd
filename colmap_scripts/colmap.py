@@ -32,7 +32,7 @@ class ConvertColmap:
             feat_extracton_cmd = (
                 f"{colmap_command} feature_extractor "
                 f"--database_path {base_dir}/database.db "
-                f"--image_path {image_path} "
+                f"--image_path {image_path}/images "
                 f"--ImageReader.single_camera 1 "
                 f"--ImageReader.camera_model {self.camera} "
                 f"--SiftExtraction.use_gpu {use_gpu} "
@@ -86,7 +86,7 @@ class ConvertColmap:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Convert images to COLMAP format")
-    parser.add_argument("image_path", type=Path, help="Input to images folder")
+    parser.add_argument("image_path", type=Path, help="Path to folder that contains a /images folder")
     parser.add_argument("--use_gpu", action="store_true", help="Whether to use GPU with COLMAP", default=True)
     parser.add_argument("--skip_matching", action="store_true", help="Skip matching")
     parser.add_argument("--skip_undistortion", action="store_true", help="Skip undistorting images")
