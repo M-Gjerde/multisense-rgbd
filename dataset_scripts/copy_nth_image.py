@@ -1,10 +1,11 @@
 import os
 import shutil
+import ctypes
 
 # Source directory containing the images
-source_directory = '../datasets/viewer/desk2/multisense/Color_Rectified_Aux/png'
+source_directory = '../datasets/viewer/desk3/multisense_capture/Color_Rectified_Aux/png'
 # Destination directory to copy the selected images
-destination_directory = '../datasets/viewer/desk2/images'
+destination_directory = '../datasets/viewer/desk3/images'
 n = 4  # Copy every n-th image
 
 # Ensure the destination directory exists
@@ -13,7 +14,6 @@ if not os.path.exists(destination_directory):
 
 # Get a sorted list of all image files in the source directory
 image_files = sorted([f for f in os.listdir(source_directory) if f.endswith(('.png', '.ppm'))])
-
 # Iterate over the list and copy every n-th image
 for index, filename in enumerate(image_files):
     if (index + 1) % n == 0:

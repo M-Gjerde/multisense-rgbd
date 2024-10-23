@@ -15,7 +15,7 @@ first_frame = True
 
 def disparity_to_depth(disparity_image, focal_length, baseline):
     """Convert disparity image to depth map."""
-    mask = disparity_image < 5  # Mask where disparity is 0 (invalid disparity)
+    mask = disparity_image < 5  # Mask where disparity is less than 5 (invalid disparity)
     disparity_image[mask] = 0.1  # Avoid division by zero by setting small value
     depth_map = (focal_length * baseline) / disparity_image
     depth_map[mask] = 0  # Reset masked depth values to 0
