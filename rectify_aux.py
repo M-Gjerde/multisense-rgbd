@@ -7,7 +7,8 @@ import csv
 
 from tqdm import tqdm
 
-# Paths
+# Paths1
+data_input = Path("datasets/logqs_dataset/")
 image_save_folder = Path('logqs_dataset/test/')
 aux_folder = image_save_folder / 'aux'
 calibration_file = image_save_folder / 'calibration_data/aux.json'

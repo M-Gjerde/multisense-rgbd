@@ -122,7 +122,7 @@ def create_colored_point_cloud(depth_map, color_image, intrinsic_matrix):
 
     # Generate RGBD image from depth and color images
     rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(color_image_o3d, depth_image,
-                                                                    depth_scale=10.0, depth_trunc=1000.0,
+                                                                    depth_scale=1.0, depth_trunc=1000.0,
                                                                     convert_rgb_to_intensity=False)
 
     # Generate point cloud
@@ -159,7 +159,7 @@ def point_cloud_to_rgbd(point_cloud, width, height, intrinsic_matrix):
                 u = int((fx * x) / z + cx)
                 v = int((fy * y) / z + cy)
                 if 0 <= u < width and 0 <= v < height:
-                    depth_image[v, u] = z * 1000  # Convert to millimeters
+                    depth_image[v, u] = z  # Convert to millimeters
                     color_image[v, u] = (colors[i] * 255).astype(np.uint8)  # Convert normalized color to uint8
     color_image = color_image[:, :, ::-1]  # Convert BGR to RGB by reversing the color channels
 
@@ -173,11 +173,18 @@ def save_rgbd_tum_format(color_image, depth_image, output_dir, disparity_filenam
     os.makedirs(os.path.dirname(rgb_file), exist_ok=True)
     cv2.imwrite(rgb_file, color_image)
 
+
     # Save Depth image (in millimeters, 16-bit PNG)
     depth_file = os.path.join(output_dir, f"depth/{color_filename}")
     os.makedirs(os.path.dirname(depth_file), exist_ok=True)
-    depth_image_mm = depth_image.astype(np.uint16)  # Convert depth to 16-bit
+    depth_image_mm = (depth_image * 1000).astype(np.uint16)
     cv2.imwrite(depth_file, depth_image_mm)
+
+    # Save Depth image (in millimeters, 16-bit NPY)
+    depth_file = os.path.join(output_dir, f"npy/{color_filename.replace('.png', '.npy')}")
+    os.makedirs(os.path.dirname(depth_file), exist_ok=True)
+    depth_image_mm = (depth_image * 1000).astype(np.uint16)
+    np.save(depth_file, depth_image_mm)
 
     print(f"Saved frame {frame_id} as RGB-D (TUM format) to: {os.path.join(output_dir, f'rgb/{color_filename}')}")
 
@@ -232,45 +239,14 @@ def load_and_update_point_cloud(vis, point_cloud, csv_rows, index, use_aux, K_le
     if color_image.shape[:2] != depth_image.shape:
         color_image = cv2.resize(color_image, (width, height))
 
-    #filtered_color_image, filtered_depth_image = apply_mask_to_rgbd(color_image, depth_image, mask)
-
     # Create point cloud and update geometry
     updated_point_cloud = create_colored_point_cloud(depth_image, color_image, intrinsic_matrix,)
-
-    #updated_point_cloud = remove_noise_from_point_cloud_simple(updated_point_cloud)
 
     point_cloud.points = updated_point_cloud.points
     point_cloud.colors = updated_point_cloud.colors
 
     if args.save_rgbd:
-        print("Removing points further than 20 meters and applying o3d statistical outlier filter")
-        # Filter points by distance (Euclidean distance from origin)
-        points = np.asarray(point_cloud.points)
-        distances = np.linalg.norm(points, axis=1)
-        mask = distances <= 20.0  # Filter points that are within 20 meters
-
-        # Apply mask to filter the points and colors
-        point_cloud.points = o3d.utility.Vector3dVector(points[mask])
-        point_cloud.colors = o3d.utility.Vector3dVector(np.asarray(point_cloud.colors)[mask])
-
         color_image_rgbd, depth_image_rgbd = point_cloud_to_rgbd(point_cloud, width, height, intrinsic_matrix)
-
-        # Assuming depth_image is in millimeters and has a range of 0 to 20 mm
-        min_depth = 0  # Minimum depth value in mm
-        max_depth = 10000  # Maximum depth value in mm
-
-        # Clip the depth values to the 0-20 range
-        #depth_clipped = np.clip(depth_image_rgbd, min_depth, max_depth)
-        #depth_scaled = ((depth_clipped - min_depth) / (max_depth - min_depth)) * 255
-        #depth_scaled = depth_scaled.astype(np.uint8)
-
-        # Apply the Jet colormap
-        #depth_colored = cv2.applyColorMap(depth_scaled, cv2.COLORMAP_JET)
-        #color_image_rgbd = color_image_rgbd[:, :, ::-1]  # Convert BGR to RGB by reversing the color channels
-
-        #cv2.imshow("Color", color_image_rgbd)
-        #cv2.imshow("filtered_depth_image", depth_colored)
-        #cv2.waitKey(1)
         # Save the RGB and depth images in TUM RGB-D format
         save_rgbd_tum_format(color_image_rgbd, depth_image_rgbd, args.save_rgbd_path, os.path.basename(row[3]), os.path.basename(row[2]), index)
 
@@ -286,23 +262,23 @@ def read_args_from_file(file_path):  # Read arguments from the text file and ret
     return args
 
 if __name__ == "__main__":
-    dataset_folder = "indoor_store"
+    dataset_folder = "/home/magnus/datasets/multisense/jeep_gravel/logqs_dataset"
     parser = argparse.ArgumentParser(description='Reproject disparity files into 3D point clouds')
     parser.add_argument('--csv_file', type=str, required=False, help="Path to synced_frames.csv",
-                        default=f"logqs_dataset/{dataset_folder}/synced_frames.csv")
+                        default=f"{dataset_folder}/synced_frames.csv")
     parser.add_argument('--disparity_folder', type=str, required=False, help="Folder containing disparity .npy files",
-                        default=f"logqs_dataset/{dataset_folder}/disparity")
+                        default=f"{dataset_folder}/disparity")
     parser.add_argument('--left_folder', type=str, required=False, help="Folder containing left images",
-                        default=f"logqs_dataset/{dataset_folder}/left")
+                        default=f"{dataset_folder}/left")
     parser.add_argument('--aux_folder', type=str, required=False, help="Folder containing aux images",
-                        default=f"logqs_dataset/{dataset_folder}/aux_rectified")
+                        default=f"{dataset_folder}/aux_rectified")
     parser.add_argument('--calibration_file', type=str, required=False, help="Path to left camera calibration file",
-                        default=f"logqs_dataset/{dataset_folder}/calibration_data/left.json")
+                        default=f"{dataset_folder}/calibration_data/left.json")
     parser.add_argument('--aux_calibration_file', type=str, required=False, help="Path to aux camera calibration file",
-                        default=f"logqs_dataset/{dataset_folder}/calibration_data/aux.json")
+                        default=f"{dataset_folder}/calibration_data/aux.json")
     parser.add_argument('--right_calibration_file', type=str, required=False,
                         help="Path to aux camera calibration file",
-                        default=f"logqs_dataset/{dataset_folder}/calibration_data/right.json")
+                        default=f"{dataset_folder}/calibration_data/right.json")
     parser.add_argument('--use_aux', action='store_true', help="Flag to use aux rectified images for coloring")
     parser.add_argument('--save_rgbd', action='store_true',
                         help="Flag to save rgbd_images, Make sure to update output folder")
@@ -348,7 +324,7 @@ if __name__ == "__main__":
         csv_rows = list(reader)
 
     # State to track the current index in the CSV file
-    state = {"current_index": 105}
+    state = {"current_index": 0}
 
 
     # Function to go to the next frame

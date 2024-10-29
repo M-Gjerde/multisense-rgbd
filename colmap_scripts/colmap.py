@@ -81,6 +81,23 @@ class ConvertColmap:
                 logging.error(f"Image undistortion failed with code {exit_code}. Exiting.")
                 exit(exit_code)
 
+            # Convert .bin to .txt files
+        sparse_path = Path(base_dir) / "sparse" / "0"
+        if sparse_path.exists():
+            model_conversion_cmd = (
+                f"{colmap_command} model_converter "
+                f"--input_path {sparse_path} "
+                f"--output_path {sparse_path} "
+                f"--output_type TXT"
+            )
+            exit_code = os.system(model_conversion_cmd)
+            if exit_code != 0:
+                logging.error(f"Model conversion from .bin to .txt failed with code {exit_code}. Exiting.")
+                exit(exit_code)
+        else:
+            logging.error(f"Sparse model path {sparse_path} does not exist. Cannot convert .bin files to .txt.")
+
+
         if self.resize:
             raise NotImplementedError
 
