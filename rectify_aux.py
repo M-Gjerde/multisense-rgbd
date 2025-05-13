@@ -3,66 +3,64 @@ import json
 import cv2
 import numpy as np
 from pathlib import Path
-import csv
-
 from tqdm import tqdm
 
-# Paths1
-data_input = Path("datasets/logqs_dataset/")
-image_save_folder = Path('logqs_dataset/test/')
-aux_folder = image_save_folder / 'aux'
-calibration_file = image_save_folder / 'calibration_data/aux.json'
-aux_rectified_folder = image_save_folder / 'aux_rectified'
-aux_rectified_folder.mkdir(exist_ok=True)
+# === Configuration ===
+# Root folder where extraction saved images and calibration
+root_dir = Path('logqs_dataset/desert')
+# Calibration folder (contains back.json, front.json, left.json, right.json)
+calib_folder = root_dir / 'calibration_data'
+# Cameras to process
+cameras = ['back', 'front', 'left', 'right']
 
-# Load the aux camera calibration data from JSON file
-with open(calibration_file, 'r') as f:
-    calibration_data = json.load(f)
+# === Helper to load calibration ===
+def load_calibration(calib_file: Path):
+    with open(calib_file, 'r') as f:
+        data = json.load(f)
+    K = np.array(data['K']).reshape(3, 3)
+    D = np.array(data['D'])
+    R = np.array(data['R']).reshape(3, 3)
+    P = np.array(data['P']).reshape(3, 4)
+    size = (int(data['width']), int(data['height']))
+    return K, D, R, P, size
 
-# Extract the calibration matrices
-K = np.array(calibration_data['K']).reshape(3, 3)  # Reshape intrinsic matrix to 3x3
-D = np.array(calibration_data['D'])  # Distortion coefficients (1D array)
-R = np.array(calibration_data['R']).reshape(3, 3)  # Rectification matrix (3x3)
-P = np.array(calibration_data['P']).reshape(3, 4)  # Projection matrix (3x4)
+# === Main rectification loop ===
+for cam in cameras:
+    # Paths
+    img_folder = root_dir / cam
+    rect_folder = root_dir / f"{cam}_rectified"
+    rect_folder.mkdir(exist_ok=True)
+    calib_file = calib_folder / f"{cam}.json"
 
-# Ensure the image size is correctly formatted (width, height)
-image_size = (int(calibration_data['width']), int(calibration_data['height']))
+    if not calib_file.exists():
+        print(f"Calibration file missing for '{cam}': {calib_file}")
+        continue
+    if not img_folder.exists():
+        print(f"Image folder missing for '{cam}': {img_folder}")
+        continue
 
-# Debug prints
-print("K (Intrinsic Camera Matrix):", K)
-print("D (Distortion Coefficients):", D)
-print("R (Rectification Matrix):", R)
-print("P (Projection Matrix):", P)
-print("Image Size:", image_size)
+    # Load calibration
+    K, D, R, P, image_size = load_calibration(calib_file)
+    print(f"Loaded calibration for '{cam}': image size {image_size}")
 
-# Iterate over each image in the aux folder
-for img_filename in tqdm(sorted(os.listdir(aux_folder))):
-    if img_filename.endswith('.png'):
-        img_path = aux_folder / img_filename
+    # Precompute undistort/rectify map
+    mapx, mapy = cv2.initUndistortRectifyMap(K, D, R, P, image_size, cv2.CV_32FC1)
 
-        # Load the image
-        img = cv2.imread(str(img_path))
-        if img is None: # Mostly likely corrupted.
-            # If image is corrupted, create a blank image
-            print(f"Image {img_filename} could not be loaded. Creating a blank image.")
-            # Create a blank image filled with zeros (black)
-            img = np.zeros((600 - 6, 960, 3), dtype=np.uint8)
-
-        # Ensure the image size matches the expected size from calibration
-        if img.shape[1] != image_size[0] or img.shape[0] != image_size[1]:
-            print(f"Skipping {img_filename}: Image size {img.shape} doesn't match calibration size {image_size}.")
+    # Process all PNG images
+    for img_file in tqdm(sorted(img_folder.glob('*.png')), desc=f"Rectifying {cam}"):
+        img = cv2.imread(str(img_file))
+        if img is None:
+            print(f"Failed loading {img_file}, skipping.")
             continue
+        # Check and resize if needed
+        if (img.shape[1], img.shape[0]) != image_size:
+            print(f"Skipping {img_file.name}: size {img.shape[1], img.shape[0]} != {image_size}")
+            continue
+        # Apply rectification
+        rectified = cv2.remap(img, mapx, mapy, interpolation=cv2.INTER_LINEAR)
+        # Save
+        out_path = rect_folder / img_file.name
+        cv2.imwrite(str(out_path), rectified)
+    print(f"Finished rectification for '{cam}', saved to {rect_folder}")
 
-        # Compute the rectification (undistortion and stereo alignment) transformation map
-        mapx, mapy = cv2.initUndistortRectifyMap(K, D, R, P, image_size, cv2.CV_32FC1)
-
-        # Apply rectification transformation to the image
-        rectified_img = cv2.remap(img, mapx, mapy, cv2.INTER_LINEAR)
-
-        # Save the rectified image in the aux_rectified folder
-        rectified_img_path = aux_rectified_folder / img_filename
-        cv2.imwrite(str(rectified_img_path), rectified_img)
-
-        #print(f"Rectified and saved: {rectified_img_path}")
-
-print(f"Stereo rectification completed. Rectified images saved in: {aux_rectified_folder}")
+print("All cameras rectified.")
