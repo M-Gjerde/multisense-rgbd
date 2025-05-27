@@ -1,98 +1,142 @@
+#!/usr/bin/env python3
+"""
+Extract all image & disparity streams + their calibrations from a ROS bag
+into a dataset folder structure:
+
+dataset/
+├── left/          (RGB or mono)
+│   ├── <stamp>.png
+│   └── calib.json
+├── right/
+├── aux/
+├── disparity/     (float disparity .npy or uint16 png)
+└── unknown_<topic_hash>/
+"""
+
 from pathlib import Path
 from rosbags.highlevel import AnyReader
 from rosbags.typesys import Stores, get_typestore
 from PIL import Image
-import json
+import numpy as np, json, re, hashlib, argparse
 from tqdm import tqdm
 
-# Define the bag file path and the root folder to save images and calibration data
-bagpath = Path('download/thoro.bag')
-image_save_folder = Path('logqs_dataset/thoro/')
-image_save_folder.mkdir(exist_ok=True, parents=True)
+# ---------------------------------------------------------------------------
 
-# Create subfolders for the four cameras
-folders = {
-    'front': image_save_folder / 'front',
-    #'back':  image_save_folder / 'back',
-    #'left':  image_save_folder / 'left',
-    #'right': image_save_folder / 'right'
-}
-for f in folders.values():
-    f.mkdir(exist_ok=True, parents=True)
+# --- classification heuristics ­---------------------------------------------------
+def classify(topic: str) -> str:
+    """Return folder name for an image topic."""
+    t = topic.lower()
+    if "disparity" in t:
+        return "disparity"
+    if "left"  in t:
+        return "left"
+    if "right" in t:
+        return "right"
+    if "aux"   in t or "rgb" in t or "color" in t:
+        return "aux"
+    # Fall-back based on hash so multiple unknown topics don't clash
+    return f"unknown_{hashlib.md5(topic.encode()).hexdigest()[:6]}"
 
-# Folder for calibration data
-calibration_save_folder = image_save_folder / 'calibration_data'
-calibration_save_folder.mkdir(exist_ok=True)
+# --- save helpers ­----------------------------------------------------------------
+def ensure(folder: Path):
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
-# Type store in case the bag has no message definitions
-typestore = get_typestore(Stores.ROS2_FOXY)
+def _to_builtin(x):
+    """convert numpy → builtin so json.dumps works"""
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    if isinstance(x, (np.generic,)):        # numpy scalar
+        return x.item()
+    return x                                # already builtin
 
-# Mapping of camera names to their image and camera_info topics
-camera_topics = {
-    'front': '/KS21i/full_resolution/aux/image_rect_color',
-    #'front': '/crl_rzr/multisense_front/aux/image_color',
-    #'back':  '/crl_rzr/multisense_back/aux/image_color',
-    #'left':  '/crl_rzr/multisense_left/aux/image_color',
-    #'right': '/crl_rzr/multisense_right/aux/image_color',
-
-}
-camera_info_topics = {
-    name: topic + '/camera_info'
-    for name, topic in camera_topics.items()
-}
-
-# Function to save calibration data
-def save_calibration_data(reader, camera_name, camera_info_topic, out_folder):
-    conn = next((c for c in reader.connections if c.topic == camera_info_topic), None)
-    if not conn:
-        print(f"No connection for {camera_name}: {camera_info_topic}")
+def save_calib(msg, out_path):
+    if not hasattr(msg, "K"):               # guard: only CameraInfo allowed
+        print(f"[warn] not a CameraInfo message → {out_path} skipped")
         return
-    # Use only the first CameraInfo message
-    for connection, timestamp, raw in reader.messages(connections=[conn]):
-        msg = reader.deserialize(raw, connection.msgtype)
-        calib = {
-            'K': msg.K.tolist(),
-            'D': msg.D.tolist(),
-            'R': msg.R.tolist(),
-            'P': msg.P.tolist(),
-            'width': msg.width,
-            'height': msg.height
-        }
-        out_file = out_folder / f'{camera_name}.json'
-        with open(out_file, 'w') as f:
-            json.dump(calib, f, indent=4)
-        print(f"Saved calibration for {camera_name}: {out_file}")
-        break
 
-# Read the bag and process messages
-with AnyReader([bagpath], default_typestore=typestore) as reader:
-    # Gather image connections
-    print(reader.connections)
-    image_conns = {name: next((c for c in reader.connections if c.topic == topic), None)
-                   for name, topic in camera_topics.items()}
+    data = {k: _to_builtin(getattr(msg, k)) for k in ("K", "D", "R", "P")}
+    data["width"]  = int(msg.width)
+    data["height"] = int(msg.height)
 
-    # Save calibration data
-    for name, info_topic in camera_info_topics.items():
-        save_calibration_data(reader, name, info_topic, calibration_save_folder)
+    out_path.write_text(json.dumps(data, indent=2))
+    print(f"saved calibration → {out_path}")
 
-    # Extract and save images
-    for name, conn in image_conns.items():
-        if conn is None:
-            print(f"No image connection for {name}: {camera_topics[name]}")
+# --- main ­------------------------------------------------------------------------
+def main(bagfile: Path, out_root: Path):
+    typestore = get_typestore(Stores.ROS2_FOXY)
+    ensure(out_root)
 
-    # Iterate through all image messages
-    for connection, timestamp, raw in tqdm(
-        reader.messages(connections=[c for c in image_conns.values() if c]),
-        desc="Extracting images"
-    ):
-        msg = reader.deserialize(raw, connection.msgtype)
-        ts = str(timestamp)
-        # Determine which camera this message belongs to
-        cam = next(name for name, c in image_conns.items() if c == connection)
-        # Assume RGB BGR format for color images
-        width, height = msg.width, msg.height
-        img = Image.frombuffer('RGB', (width, height), msg.data, 'raw', 'BGR', 0, 1)
-        out_path = folders[cam] / f'{ts}.png'
-        img.save(out_path)
+    with AnyReader([bagfile], default_typestore=typestore) as reader:
+        # all connections
+        conns = {c.topic: c for c in reader.connections}
 
-    print("Done extracting images and calibration.")
+        # image producers
+        is_image = lambda c: c.msgtype == "sensor_msgs/msg/Image"
+        img_conns = [c for c in conns.values() if is_image(c)]
+
+        # all CameraInfo streams
+        caminfo_conns = [c for c in conns.values()
+                         if c.msgtype == "sensor_msgs/msg/CameraInfo"]
+
+        folders = {}
+
+        # 1) first, make folders & save every CameraInfo you find
+        for info_c in caminfo_conns:
+            # classify by topic name
+            name = classify(info_c.topic)
+            folder = ensure(out_root / name)
+            folders[info_c.topic] = folder
+
+            # grab the first CameraInfo message
+            conn, ts, raw = next(reader.messages(connections=[info_c]))
+            msg = reader.deserialize(raw, conn.msgtype)
+            save_calib(msg, folder / "calib.json")
+
+        # 2) now make sure every image topic still ends up in a folder
+        for img_c in img_conns:
+            name = classify(img_c.topic)
+            folders.setdefault(img_c.topic, ensure(out_root / name))
+
+        # 3) extract images & disparity as before, using folders[img_c.topic]
+        for conn, ts, raw in tqdm(reader.messages(connections=img_conns),
+                                  desc="Extracting images…"):
+            folder = folders[conn.topic]
+            stamp  = f"{ts}.png"   # default name
+
+
+            if conn.msgtype == "sensor_msgs/msg/Image":
+                msg = reader.deserialize(raw, conn.msgtype)
+                mode = "RGB" if msg.encoding in ("rgb8","bgr8","bgr8") else "L"
+                if "bgr" in msg.encoding.lower():
+                    img = Image.frombuffer(mode, (msg.width,msg.height),
+                                           msg.data, "raw", "BGR", 0, 1)
+                    img.save(folder / stamp)
+                elif "disparity" in conn.topic:
+                    # Deserialize and interpret raw data as uint16
+                    disp_raw = np.frombuffer(msg.data, dtype=np.uint16).reshape(msg.height, msg.width)
+
+                    # Convert to float32 disparity
+                    disp_float = disp_raw.astype(np.float32) / 16.0
+                    np.save(folder / f"{ts}.npy", disp_float)
+
+                    # For preview: map [0, 256) → [0, 255] and save as 8-bit PNG
+                    disp_vis = np.clip(disp_float * (255.0 / 256.0), 0, 255).astype(np.uint8)
+                    Image.fromarray(disp_vis).save(folder / f"{ts}.png")
+                else:
+                    img = Image.frombuffer(mode, (msg.width,msg.height),
+                                           msg.data, "raw", mode, 0, 1)
+                    img.save(folder / stamp)
+
+
+
+    print(f"Finished.  Output in → {out_root}")
+
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("bag", type=Path, help="ROS1/ROS2 bag file")
+    ap.add_argument("out", type=Path, help="output dataset root folder")
+    args = ap.parse_args()
+    main(args.bag, args.out)
