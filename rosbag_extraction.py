@@ -85,7 +85,7 @@ def main(bagfile: Path, out_root: Path):
         for info_c in caminfo_conns:
             # classify by topic name
             name = classify(info_c.topic)
-            folder = ensure(out_root / name)
+            folder = ensure(out_root / bagfile.name.split(".")[0] / name)
             folders[info_c.topic] = folder
 
             # grab the first CameraInfo message
@@ -96,14 +96,13 @@ def main(bagfile: Path, out_root: Path):
         # 2) now make sure every image topic still ends up in a folder
         for img_c in img_conns:
             name = classify(img_c.topic)
-            folders.setdefault(img_c.topic, ensure(out_root / name))
+            folders.setdefault(img_c.topic, ensure(out_root / bagfile.name.split(".")[0]/ name))
 
         # 3) extract images & disparity as before, using folders[img_c.topic]
         for conn, ts, raw in tqdm(reader.messages(connections=img_conns),
                                   desc="Extracting images…"):
             folder = folders[conn.topic]
             stamp  = f"{ts}.png"   # default name
-
 
             if conn.msgtype == "sensor_msgs/msg/Image":
                 msg = reader.deserialize(raw, conn.msgtype)
